@@ -3,23 +3,21 @@ import time
 import cv2
 import torch
 import numpy as np
-from PIL import Image
-from model import get_backbone
+from model import extract_features, FeatureExtractor
 from memory_bank import MemoryBank
-from gen_proposals import smart_selective_search
-from torchvision import transforms
+from gen_proposals import smart_selective_search, extract_rpn_proposals, proposals_filter
 from post_proc import nms_boxes
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def inference_single_image(img_path,
-                           model_name='resnet50',
-                           bank_path='memory_bank.npy',
-                           score_thresh=0.3,
-                           nms_thresh=0.3,
-                           batch_size=32,
-                           box_resize=(224, 224),
-                           save_path=None):
+def inference(img_path,
+              model_name='resnet50',
+              bank_path='memory_bank.npy',
+              score_thresh=0.3,
+              nms_thresh=0.3,
+              batch_size=32,
+              input_size=(224, 224),
+              save_path=None):
     """
     对单张图像进行缺陷检测推理，并可视化标注结果
     """
@@ -27,49 +25,36 @@ def inference_single_image(img_path,
     image = cv2.imread(img_path)
     if image is None:
         raise ValueError(f"Cannot read image: {img_path}")
-    h_img, w_img = image.shape[:2]
-
-    # 加载模型
-    model = get_backbone(model_name).to(device)
-    model.eval()
+    h, w = image.shape[:2]
+    h_ratio = input_size[0] / h
+    w_ratio = input_size[1] / w
 
     # 加载 memory bank
     bank = MemoryBank(bank_path)
 
-    # transforms
-    preprocess = transforms.Compose([
-        transforms.Resize(box_resize),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406],
-                             [0.229, 0.224, 0.225])
-    ])
-
-    # proposals
+    # 提取 proposals
     proposals = smart_selective_search(image)
-    crops = []
-    coords = []
-    for (x1, y1, x2, y2) in proposals:
-        patch = image[y1:y2, x1:x2]
-        if patch.shape[0] < 10 or patch.shape[1] < 10:
-            continue
-        pil_img = Image.fromarray(cv2.cvtColor(patch, cv2.COLOR_BGR2RGB))
-        input_tensor = preprocess(pil_img)
-        crops.append(input_tensor)
-        coords.append([x1, y1, x2, y2])
+    # proposals = extract_rpn_proposals(image)
+    # proposals = proposals_filter(image, proposals)
 
-    if not crops:
-        print("No valid proposals.")
-        return
+    # visualize proposals
+    vis = image.copy()
+    for i, (x1, y1, x2, y2) in enumerate(proposals):
+        x1, y1, x2, y2 = int(x1 / w_ratio), int(y1 / h_ratio), int(x2 / w_ratio), int(y2 / h_ratio)
+        color = tuple(np.random.randint(0, 255, 3).tolist())
+        # color = (0, 255, 0)
+        cv2.rectangle(vis, (x1, y1), (x2, y2), color, 1)
+        # cv2.circle(vis, (x1 + (x2 - x1) // 2, y1 + (y2 - y1) // 2), 3, color, -1)
 
-    # 特征提取
-    features = []
-    with torch.no_grad():
-        for i in range(0, len(crops), batch_size):
-            batch = torch.stack(crops[i:i+batch_size]).to(device)
-            feat = model(batch)
-            feat = torch.nn.functional.normalize(feat, p=2, dim=1)
-            features.append(feat.cpu())
-    features = torch.cat(features, dim=0).numpy()
+    cv2.imshow("Proposals", vis)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+    # 构建模型
+    model = FeatureExtractor(model_name, return_map=True).to(device)
+
+    # 提取特征
+    features, coords = extract_features(image, proposals, model, device)
 
     # 匹配
     results = []
@@ -113,14 +98,14 @@ def inference_single_image(img_path,
 
 if __name__ == '__main__':
     st = time.time()
-    inference_single_image(
+    inference(
         img_path="test/0.jpg",
-        model_name="resnet50",
-        bank_path="memory_bank2.npy",
-        score_thresh=0.6,
+        model_name="moco",
+        bank_path="mem_banks/memory_bank_moco.npy",
+        score_thresh=0.5,
         nms_thresh=0.3,
         batch_size=128,
-        box_resize=(224, 224),
+        input_size=(224, 224),
         save_path="output/result.jpg"
     )
     et = time.time()
