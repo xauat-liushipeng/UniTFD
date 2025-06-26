@@ -1,7 +1,13 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
-from torchvision import transforms
+
+
+def get_backbone(name='resnet50'):
+    model = getattr(models, name)(weights=True)
+    model.fc = nn.Identity()  # 去掉分类层
+    return model
+
 
 class FeatureExtractor(nn.Module):
     def __init__(self, model_name='resnet50', pretrained=True):

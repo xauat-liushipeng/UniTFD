@@ -1,6 +1,19 @@
 import numpy as np
+from torchvision.ops import nms
+import torch
 
-def nms(boxes, scores, iou_threshold=0.5):
+def nms_boxes(boxes, scores, iou_thresh=0.3):
+    """
+    boxes: ndarray Nx4, scores: ndarray N
+    return: indices of kept boxes
+    """
+    boxes_tensor = torch.tensor(boxes, dtype=torch.float32)
+    scores_tensor = torch.tensor(scores, dtype=torch.float32)
+    keep = nms(boxes_tensor, scores_tensor, iou_thresh)
+    return keep.cpu().numpy()
+
+
+def nms_(boxes, scores, iou_threshold=0.5):
     """
     简单NMS实现，boxes格式: [N,4], scores: [N]
     """
