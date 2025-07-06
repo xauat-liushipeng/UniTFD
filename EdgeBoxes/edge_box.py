@@ -10,8 +10,9 @@ def edgebox(model_path: str, im, max_boxes: int = 100, show=False):
     """
 
     '''
-    **1.初始提案**
-    	输入一张图像$I$，用EdgeBoxes提取初始提案$\{O_m\}_{m=1}^M$，$O_m \in R^4$表示坐标，对应初始得分为$SL_m$
+    1.初始提案
+    
+    输入一张图像$I$，用EdgeBoxes提取初始提案$\{O_m\}_{m=1}^M$，$O_m \in R^4$表示坐标，对应初始得分为$SL_m$
     '''
 
     # 创建结构化边缘检测器
